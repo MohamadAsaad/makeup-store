@@ -1134,7 +1134,3 @@ document.addEventListener("DOMContentLoaded", function () {
     // --- INITIALIZATION ---
     updateCartCount();
 });
-// تأكد من أن الدوال العامة متاحة عالمياً
-window.handleProductFormSubmit = handleProductFormSubmit;
-window.displayProductImages = displayProductImages;
-window.deleteProductImage = deleteProductImage;
