@@ -17,12 +17,11 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // Safely initialize Firebase services to prevent errors on pages that might be missing a script
     const db = firebase.firestore();
-    const auth = typeof firebase.auth === 'function' ? firebase.auth() : null;
-    const storage = typeof firebase.storage === 'function' ? firebase.storage() : null;
-
+    const auth = firebase.auth();
+    const IMGBB_API_KEY = "bb77b659de427ab9cf344675ba35030d";
 
     // --- 2. GLOBAL VARIABLES & UTILS ---
-    const WHATSAPP_NUMBER = "+905516304088";
+    const WHATSAPP_NUMBER = "+905398847282";
     let cart = JSON.parse(localStorage.getItem('makeupStoreCart')) || [];
     let allAdminProducts = [];
     let allAdminOrders = [];
@@ -756,74 +755,188 @@ document.addEventListener("DOMContentLoaded", function () {
         }).join('');
     }
 
-async function handleProductFormSubmit(e) {
-    e.preventDefault();
-    const saveButton = document.getElementById('save-product-btn');
-    saveButton.disabled = true;
-    saveButton.innerHTML = '<span class="spinner-border spinner-border-sm"></span> جاري الحفظ...';
+    // --- دالة رفع الصور إلى ImgBB ---
+    async function uploadImageToImgBB(file) {
+        const formData = new FormData();
+        formData.append("image", file);
 
-    const productId = document.getElementById('productId').value;
-    const imageFiles = document.getElementById('productImageFiles').files;
+        try {
+            const response = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, {
+                method: "POST",
+                body: formData
+            });
 
-    // دالة لتحويل ملف إلى نص Base64
-    const toBase64 = file => new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = error => reject(error);
-    });
-
-    try {
-        let newImageUrls = [];
-        if (imageFiles.length > 0) {
-            // تحويل كل الصور الجديدة التي تم اختيارها
-            newImageUrls = await Promise.all(Array.from(imageFiles).map(toBase64));
-        }
-        
-        // جلب الصور القديمة إذا كان المنتج قيد التعديل
-        let existingImageUrls = [];
-        if (productId) {
-            const product = allAdminProducts.find(p => p.id === productId);
-            if (product && product.images) {
-                existingImageUrls = product.images;
+            if (!response.ok) {
+                throw new Error(`خطأ في الخادم: ${response.status}`);
             }
+
+            const data = await response.json();
+
+            if (!data.success) {
+                throw new Error(data.error?.message || "فشل رفع الصورة");
+            }
+
+            return {
+                url: data.data.url,
+                thumbUrl: data.data.thumb.url,
+                deleteUrl: data.data.delete_url
+            };
+
+        } catch (error) {
+            console.error("تفاصيل الخطأ:", error);
+            throw new Error(`فشل رفع الصورة: ${error.message}`);
         }
-        
-        const allImageUrls = [...existingImageUrls, ...newImageUrls];
-
-        const productData = {
-            name_ar: document.getElementById('productName').value,
-            price: parseFloat(document.getElementById('productPrice').value),
-            description_ar: document.getElementById('productDescription').value,
-            category_ar: document.getElementById('productCategory').value,
-            stock: parseInt(document.getElementById('productStock').value),
-            is_featured: document.getElementById('isFeatured').checked,
-            images: allImageUrls // هنا سيتم حفظ نصوص Base64
-        };
-
-        if (productId) {
-            // تحديث المنتج الحالي
-            await db.collection('products').doc(productId).update(productData);
-            showNotification('تم تحديث المنتج بنجاح!', 'success');
-        } else {
-            // إضافة منتج جديد
-            productData.createdAt = firebase.firestore.FieldValue.serverTimestamp();
-            await db.collection('products').add(productData);
-            showNotification('تم إضافة المنتج بنجاح!', 'success');
-        }
-
-        document.getElementById('add-product-form-container').style.display = 'none';
-        document.getElementById('product-form').reset();
-        await loadDashboardData(); // إعادة تحميل البيانات
-
-    } catch (error) {
-        console.error("Error saving product with Base64:", error);
-        showNotification('حدث خطأ أثناء حفظ المنتج. تحقق من حجم الصور.', 'danger');
-    } finally {
-        saveButton.disabled = false;
-        saveButton.innerHTML = 'حفظ المنتج';
     }
-}
+
+    // --- دالة ضغط الصور ---
+    async function compressImage(file, quality = 0.7) {
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0);
+
+                    canvas.toBlob(
+                        (blob) => resolve(new File([blob], file.name, {
+                            type: 'image/jpeg',
+                            lastModified: Date.now()
+                        })),
+                        'image/jpeg',
+                        quality
+                    );
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
+    }
+
+    // --- تعديل دالة حفظ المنتج ---
+    async function handleProductFormSubmit(e) {
+        e.preventDefault();
+        const saveButton = document.getElementById('save-product-btn');
+        saveButton.disabled = true;
+        saveButton.innerHTML = '<span class="spinner-border spinner-border-sm"></span> جاري الحفظ...';
+
+        try {
+            const imageFiles = document.getElementById('productImageFiles').files;
+            const uploadedImages = [];
+
+            // رفع جميع الصور مع ضغطها
+            for (let i = 0; i < imageFiles.length; i++) {
+                try {
+                    const compressedFile = await compressImage(imageFiles[i]);
+                    const result = await uploadImageToImgBB(compressedFile);
+                    uploadedImages.push({
+                        url: result.url,
+                        thumbUrl: result.thumbUrl
+                    });
+                } catch (error) {
+                    console.error(`خطأ في الصورة ${i + 1}:`, error);
+                    throw new Error(`خطأ في الصورة ${i + 1}: ${error.message}`);
+                }
+            }
+
+            // حفظ بيانات المنتج في Firestore
+            const productData = {
+                name_ar: document.getElementById('productName').value,
+                price: parseFloat(document.getElementById('productPrice').value),
+                description_ar: document.getElementById('productDescription').value,
+                category_ar: document.getElementById('productCategory').value,
+                stock: parseInt(document.getElementById('productStock').value),
+                is_featured: document.getElementById('isFeatured').checked,
+                images: uploadedImages,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            };
+
+            const productId = document.getElementById('productId').value;
+            if (productId) {
+                await db.collection('products').doc(productId).update(productData);
+                showNotification('تم تحديث المنتج بنجاح!', 'success');
+            } else {
+                await db.collection('products').add(productData);
+                showNotification('تم إضافة المنتج بنجاح!', 'success');
+            }
+
+            document.getElementById('product-form').reset();
+            document.getElementById('add-product-form-container').style.display = 'none';
+            await loadDashboardData();
+
+        } catch (error) {
+            showNotification(error.message, 'danger');
+        } finally {
+            saveButton.disabled = false;
+            saveButton.innerHTML = 'حفظ المنتج';
+        }
+    }
+
+    // --- دالة عرض الصور ---
+    function displayProductImages(images, containerId) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+
+        container.innerHTML = '';
+
+        if (!images || images.length === 0) {
+            container.innerHTML = '<p class="text-muted">لا توجد صور للمنتج</p>';
+            return;
+        }
+
+        images.forEach((img, index) => {
+            const col = document.createElement('div');
+            col.className = 'col-md-3 col-6 mb-3';
+
+            const card = document.createElement('div');
+            card.className = 'card h-100';
+
+            const imgElement = document.createElement('img');
+            imgElement.src = img.url;
+            imgElement.alt = `صورة المنتج ${index + 1}`;
+            imgElement.className = 'card-img-top img-fluid';
+            imgElement.style.objectFit = 'cover';
+            imgElement.style.height = '200px';
+
+            const cardBody = document.createElement('div');
+            cardBody.className = 'card-body p-2';
+
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'btn btn-sm btn-danger w-100';
+            deleteBtn.innerHTML = '<i class="bi bi-trash"></i> حذف';
+            deleteBtn.onclick = () => deleteProductImage(img.deleteUrl, containerId);
+
+            cardBody.appendChild(deleteBtn);
+            card.appendChild(imgElement);
+            card.appendChild(cardBody);
+            col.appendChild(card);
+            container.appendChild(col);
+        });
+    }
+
+    // --- دالة حذف صورة المنتج ---
+    async function deleteProductImage(deleteUrl, containerId) {
+        if (!confirm('هل أنت متأكد من حذف هذه الصورة؟')) return;
+
+        try {
+            await fetch(deleteUrl, { method: "DELETE" });
+            showNotification('تم حذف الصورة بنجاح', 'success');
+
+            // تحديث الواجهة
+            const productId = document.getElementById('productId').value;
+            if (productId) {
+                const product = await db.collection('products').doc(productId).get();
+                displayProductImages(product.data().images, containerId);
+            }
+        } catch (error) {
+            showNotification('فشل حذف الصورة', 'danger');
+            console.error(error);
+        }
+    }
 
 
     window.editProduct = (productId) => {
@@ -1021,3 +1134,7 @@ async function handleProductFormSubmit(e) {
     // --- INITIALIZATION ---
     updateCartCount();
 });
+// تأكد من أن الدوال العامة متاحة عالمياً
+window.handleProductFormSubmit = handleProductFormSubmit;
+window.displayProductImages = displayProductImages;
+window.deleteProductImage = deleteProductImage;
