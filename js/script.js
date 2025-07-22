@@ -17,11 +17,14 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // Safely initialize Firebase services to prevent errors on pages that might be missing a script
     const db = firebase.firestore();
-    const auth = firebase.auth();
-    const IMGBB_API_KEY = "bb77b659de427ab9cf344675ba35030d";
+    const auth = typeof firebase.auth === 'function' ? firebase.auth() : null;
+    // Firebase Storage is no longer needed for product image uploads
+    // const storage = typeof firebase.storage === 'function' ? firebase.storage() : null;
+
 
     // --- 2. GLOBAL VARIABLES & UTILS ---
-    const WHATSAPP_NUMBER = "+905398847282";
+    const WHATSAPP_NUMBER = "+905516304088";
+    const IMGBB_API_KEY = "bb77b659de427ab9cf344675ba35030d"; // Your ImgBB API Key
     let cart = JSON.parse(localStorage.getItem('makeupStoreCart')) || [];
     let allAdminProducts = [];
     let allAdminOrders = [];
@@ -282,27 +285,16 @@ document.addEventListener("DOMContentLoaded", function () {
             productsContainer.innerHTML = `<p class="text-danger col-12">عفواً، حدث خطأ في جلب المنتجات.</p>`;
         }
     }
-    /**
-     * يعرض المنتجات في صفحة "كل المنتجات" مع دعم للبحث والتصنيفات والتنقل بين الصفحات.
-     * @param {object} options - خيارات العرض.
-     * @param {string} [options.category='all'] - التصنيف المطلوب عرضه.
-     * @param {string|null} [options.search=null] - مصطلح البحث.
-     * @param {string|null} [options.direction=null] - اتجاه التنقل ('next' or 'prev').
-     */
+
     async function displayShopProducts({ category = 'all', search = null, direction = null }) {
         const container = document.getElementById('all-products-container');
         const searchInfoContainer = document.getElementById('search-results-info');
         if (!container) return;
 
-        // إظهار مؤشر التحميل
         container.innerHTML = `<div class="col-12 text-center my-5"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div></div>`;
         if (searchInfoContainer) searchInfoContainer.innerHTML = '';
 
         try {
-            // --- معالجة حالة البحث ---
-            // ملاحظة هامة: هذا البحث يعمل من جانب العميل (client-side).
-            // إنه غير فعال للمتاجر التي تحتوي على عدد كبير من المنتجات.
-            // الحل الأمثل هو استخدام خدمة بحث متخصصة مثل Algolia أو Typesense.
             if (search) {
                 const querySnapshot = await db.collection('products').get();
                 const allProducts = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -320,22 +312,19 @@ document.addEventListener("DOMContentLoaded", function () {
                 }
 
                 if (searchInfoContainer) searchInfoContainer.innerHTML = `<p>نتائج البحث عن: "<strong>${search}</strong>" (${filteredProducts.length})</p>`;
-                document.getElementById('pagination-controls').innerHTML = ''; // إخفاء أزرار التنقل عند البحث
+                document.getElementById('pagination-controls').innerHTML = '';
                 return;
             }
 
-            // --- معالجة حالة التصنيف والتنقل ---
             let query = db.collection('products').orderBy('createdAt', 'desc');
 
             if (category && category !== 'all') {
                 query = query.where('category_ar', '==', category);
             }
 
-            // تطبيق المؤشر الصحيح بناءً على اتجاه التنقل
             if (direction === 'next' && lastVisibleProduct) {
                 query = query.startAfter(lastVisibleProduct);
             } else if (direction === 'prev') {
-                // استخدام المؤشر المحفوظ للصفحة السابقة
                 const prevPageCursor = pageCursors[currentPage - 1];
                 query = query.startAfter(prevPageCursor);
             }
@@ -344,31 +333,26 @@ document.addEventListener("DOMContentLoaded", function () {
 
             if (snapshot.empty && currentPage === 1) {
                 container.innerHTML = `<p class="text-muted col-12">لا توجد منتجات في هذا التصنيف.</p>`;
-                renderPaginationControls(false); // لا توجد صفحة تالية
+                renderPaginationControls(false);
                 return;
             }
 
             if (snapshot.empty && currentPage > 1) {
-                // هذا يحدث إذا كانت الصفحة الأخيرة تحتوي بالضبط على PRODUCTS_PER_PAGE
                 container.innerHTML = `<p class="text-muted col-12">وصلت إلى نهاية القائمة.</p>`;
                 lastVisibleProduct = null;
-                renderPaginationControls(false); // لا توجد صفحة تالية
+                renderPaginationControls(false);
                 return;
             }
 
-            // تحديث المؤشرات وتخزينها
             const firstVisible = snapshot.docs[0];
             lastVisibleProduct = snapshot.docs[snapshot.docs.length - 1];
 
             if (direction === 'next') {
-                // إضافة مؤشر بداية الصفحة الجديدة إلى مصفوفة المؤشرات
                 pageCursors.push(firstVisible);
             }
 
-            // عرض المنتجات
             container.innerHTML = snapshot.docs.map(doc => createProductCardHTML(doc.id, doc.data())).join('');
 
-            // التحقق من وجود صفحة تالية لعرض أو إخفاء زر "التالي"
             const nextQuery = query.startAfter(lastVisibleProduct).limit(1);
             const nextSnapshot = await nextQuery.get();
             renderPaginationControls(!nextSnapshot.empty);
@@ -402,9 +386,7 @@ document.addEventListener("DOMContentLoaded", function () {
             displayShopProducts({ category, direction: 'next' });
         } else if (direction === 'prev' && currentPage > 1) {
             currentPage--;
-            // إزالة آخر مؤشر عند العودة للخلف
             pageCursors.pop();
-            // تحديث آخر عنصر ظاهر ليكون العنصر الأخير من الصفحة السابقة (غير ضروري لأننا سنعيد بناءه)
             lastVisibleProduct = pageCursors[currentPage - 1];
             displayShopProducts({ category, direction: 'prev' });
         }
@@ -571,7 +553,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // --- 7. DASHBOARD FUNCTIONS (SECURED & ENHANCED) ---
     function initializeDashboard() {
-        if (!document.body.classList.contains('dashboard-body') || !storage) return;
+        if (!document.body.classList.contains('dashboard-body')) return;
 
         const productFormContainer = document.getElementById('add-product-form-container');
         const productForm = document.getElementById('product-form');
@@ -755,95 +737,75 @@ document.addEventListener("DOMContentLoaded", function () {
         }).join('');
     }
 
-    // --- دالة رفع الصور إلى ImgBB ---
-    async function uploadImageToImgBB(file) {
-        const formData = new FormData();
-        formData.append("image", file);
-
-        try {
-            const response = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, {
-                method: "POST",
-                body: formData
-            });
-
-            if (!response.ok) {
-                throw new Error(`خطأ في الخادم: ${response.status}`);
-            }
-
-            const data = await response.json();
-
-            if (!data.success) {
-                throw new Error(data.error?.message || "فشل رفع الصورة");
-            }
-
-            return {
-                url: data.data.url,
-                thumbUrl: data.data.thumb.url,
-                deleteUrl: data.data.delete_url
-            };
-
-        } catch (error) {
-            console.error("تفاصيل الخطأ:", error);
-            throw new Error(`فشل رفع الصورة: ${error.message}`);
-        }
-    }
-
-    // --- دالة ضغط الصور ---
-    async function compressImage(file, quality = 0.7) {
-        return new Promise((resolve) => {
-            const reader = new FileReader();
-            reader.onload = (event) => {
-                const img = new Image();
-                img.onload = () => {
-                    const canvas = document.createElement('canvas');
-                    canvas.width = img.width;
-                    canvas.height = img.height;
-
-                    const ctx = canvas.getContext('2d');
-                    ctx.drawImage(img, 0, 0);
-
-                    canvas.toBlob(
-                        (blob) => resolve(new File([blob], file.name, {
-                            type: 'image/jpeg',
-                            lastModified: Date.now()
-                        })),
-                        'image/jpeg',
-                        quality
-                    );
-                };
-                img.src = event.target.result;
-            };
-            reader.readAsDataURL(file);
-        });
-    }
-
-    // --- تعديل دالة حفظ المنتج ---
     async function handleProductFormSubmit(e) {
         e.preventDefault();
         const saveButton = document.getElementById('save-product-btn');
         saveButton.disabled = true;
         saveButton.innerHTML = '<span class="spinner-border spinner-border-sm"></span> جاري الحفظ...';
 
-        try {
-            const imageFiles = document.getElementById('productImageFiles').files;
-            const uploadedImages = [];
+        const productId = document.getElementById('productId').value;
+        const imageFiles = document.getElementById('productImageFiles').files;
 
-            // رفع جميع الصور مع ضغطها
-            for (let i = 0; i < imageFiles.length; i++) {
-                try {
-                    const compressedFile = await compressImage(imageFiles[i]);
-                    const result = await uploadImageToImgBB(compressedFile);
-                    uploadedImages.push({
-                        url: result.url,
-                        thumbUrl: result.thumbUrl
-                    });
-                } catch (error) {
-                    console.error(`خطأ في الصورة ${i + 1}:`, error);
-                    throw new Error(`خطأ في الصورة ${i + 1}: ${error.message}`);
-                }
+        let existingImageUrls = [];
+        if (productId) {
+            const product = allAdminProducts.find(p => p.id === productId);
+            if (product && product.images) {
+                existingImageUrls = product.images;
             }
+        }
 
-            // حفظ بيانات المنتج في Firestore
+        let newImageUrls = [];
+
+        try {
+            // --- START: ImgBB Upload Logic ---
+            if (imageFiles.length > 0) {
+                const progressContainer = document.getElementById('image-upload-progress-container');
+                const progressBar = document.getElementById('image-upload-progress-bar');
+                progressContainer.style.display = 'block';
+                progressBar.style.width = '0%';
+                progressBar.textContent = '0%';
+
+                const uploadPromises = Array.from(imageFiles).map(async (file, index) => {
+                    const formData = new FormData();
+                    formData.append('image', file);
+                    formData.append('key', IMGBB_API_KEY);
+
+                    try {
+                        const response = await fetch('https://api.imgbb.com/1/upload', {
+                            method: 'POST',
+                            body: formData,
+                        });
+
+                        if (!response.ok) {
+                            const errorResult = await response.json();
+                            console.error('ImgBB API Error:', errorResult);
+                            throw new Error(`فشل رفع الصورة: ${errorResult.error.message}`);
+                        }
+
+                        const result = await response.json();
+                        if (result.success) {
+                            // Update progress bar after each successful upload
+                            const progress = ((index + 1) / imageFiles.length) * 100;
+                            progressBar.style.width = progress + '%';
+                            progressBar.textContent = Math.round(progress) + '%';
+                            return result.data.url;
+                        } else {
+                            throw new Error('فشل رفع الصورة على ImgBB.');
+                        }
+                    } catch (error) {
+                        // Re-throw the error to be caught by Promise.all
+                        throw error;
+                    }
+                });
+
+                // Wait for all uploads to complete
+                newImageUrls = await Promise.all(uploadPromises);
+                progressContainer.style.display = 'none';
+            }
+            // --- END: ImgBB Upload Logic ---
+
+            const allImageUrls = [...existingImageUrls, ...newImageUrls];
+
             const productData = {
                 name_ar: document.getElementById('productName').value,
                 price: parseFloat(document.getElementById('productPrice').value),
@@ -851,90 +813,28 @@ document.addEventListener("DOMContentLoaded", function () {
                 category_ar: document.getElementById('productCategory').value,
                 stock: parseInt(document.getElementById('productStock').value),
                 is_featured: document.getElementById('isFeatured').checked,
-                images: uploadedImages,
-                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                images: allImageUrls
             };
 
-            const productId = document.getElementById('productId').value;
             if (productId) {
                 await db.collection('products').doc(productId).update(productData);
                 showNotification('تم تحديث المنتج بنجاح!', 'success');
             } else {
+                productData.createdAt = firebase.firestore.FieldValue.serverTimestamp();
                 await db.collection('products').add(productData);
                 showNotification('تم إضافة المنتج بنجاح!', 'success');
             }
 
-            document.getElementById('product-form').reset();
             document.getElementById('add-product-form-container').style.display = 'none';
+            document.getElementById('product-form').reset();
             await loadDashboardData();
 
         } catch (error) {
-            showNotification(error.message, 'danger');
+            console.error("Error saving product:", error);
+            showNotification(error.message || 'حدث خطأ أثناء حفظ المنتج.', 'danger');
         } finally {
             saveButton.disabled = false;
             saveButton.innerHTML = 'حفظ المنتج';
-        }
-    }
-
-    // --- دالة عرض الصور ---
-    function displayProductImages(images, containerId) {
-        const container = document.getElementById(containerId);
-        if (!container) return;
-
-        container.innerHTML = '';
-
-        if (!images || images.length === 0) {
-            container.innerHTML = '<p class="text-muted">لا توجد صور للمنتج</p>';
-            return;
-        }
-
-        images.forEach((img, index) => {
-            const col = document.createElement('div');
-            col.className = 'col-md-3 col-6 mb-3';
-
-            const card = document.createElement('div');
-            card.className = 'card h-100';
-
-            const imgElement = document.createElement('img');
-            imgElement.src = img.url;
-            imgElement.alt = `صورة المنتج ${index + 1}`;
-            imgElement.className = 'card-img-top img-fluid';
-            imgElement.style.objectFit = 'cover';
-            imgElement.style.height = '200px';
-
-            const cardBody = document.createElement('div');
-            cardBody.className = 'card-body p-2';
-
-            const deleteBtn = document.createElement('button');
-            deleteBtn.className = 'btn btn-sm btn-danger w-100';
-            deleteBtn.innerHTML = '<i class="bi bi-trash"></i> حذف';
-            deleteBtn.onclick = () => deleteProductImage(img.deleteUrl, containerId);
-
-            cardBody.appendChild(deleteBtn);
-            card.appendChild(imgElement);
-            card.appendChild(cardBody);
-            col.appendChild(card);
-            container.appendChild(col);
-        });
-    }
-
-    // --- دالة حذف صورة المنتج ---
-    async function deleteProductImage(deleteUrl, containerId) {
-        if (!confirm('هل أنت متأكد من حذف هذه الصورة؟')) return;
-
-        try {
-            await fetch(deleteUrl, { method: "DELETE" });
-            showNotification('تم حذف الصورة بنجاح', 'success');
-
-            // تحديث الواجهة
-            const productId = document.getElementById('productId').value;
-            if (productId) {
-                const product = await db.collection('products').doc(productId).get();
-                displayProductImages(product.data().images, containerId);
-            }
-        } catch (error) {
-            showNotification('فشل حذف الصورة', 'danger');
-            console.error(error);
         }
     }
 
@@ -976,30 +876,17 @@ document.addEventListener("DOMContentLoaded", function () {
     window.deleteProduct = async (productId) => {
         if (confirm('هل أنت متأكد من رغبتك في حذف هذا المنتج؟ لا يمكن التراجع عن هذا الإجراء.')) {
             try {
-                const productRef = db.collection('products').doc(productId);
-                const productDoc = await productRef.get();
+                // Note: This function now only deletes the product from Firestore.
+                // Deleting images from ImgBB would require storing the 'delete_url' for each image,
+                // which is not implemented in this version.
+                // The previous code for deleting images from Firebase Storage has been removed.
 
-                if (productDoc.exists) {
-                    const productData = productDoc.data();
-                    // التحقق من وجود صور لحذفها
-                    if (productData.images && productData.images.length > 0) {
-                        const deletePromises = productData.images.map(imageUrl => {
-                            // استخلاص مسار الصورة من الرابط
-                            const imageRef = storage.refFromURL(imageUrl);
-                            return imageRef.delete();
-                        });
-                        // انتظار حذف جميع الصور
-                        await Promise.all(deletePromises);
-                    }
-                }
-
-                // حذف بيانات المنتج من Firestore
-                await productRef.delete();
-                showNotification('تم حذف المنتج وجميع صوره بنجاح.', 'success');
+                await db.collection('products').doc(productId).delete();
+                showNotification('تم حذف المنتج بنجاح.', 'success');
                 loadDashboardData();
 
             } catch (error) {
-                console.error("Error deleting product and its images:", error);
+                console.error("Error deleting product:", error);
                 showNotification('حدث خطأ أثناء حذف المنتج.', 'danger');
             }
         }
@@ -1022,16 +909,11 @@ document.addEventListener("DOMContentLoaded", function () {
         }
     };
 
-    /**
- * يقوم بحذف طلب محدد من قاعدة البيانات بعد تأكيد المستخدم.
- * @param {string} orderId - معرف الطلب المراد حذفه.
- */
     window.deleteOrder = async (orderId) => {
         if (confirm('هل أنت متأكد من رغبتك في حذف هذا الطلب؟ لا يمكن التراجع عن هذا الإجراء.')) {
             try {
                 await db.collection('orders').doc(orderId).delete();
                 showNotification('تم حذف الطلب بنجاح.', 'success');
-                // إعادة تحميل بيانات لوحة التحكم لتحديث القائمة
                 loadDashboardData();
             } catch (error) {
                 console.error("Error deleting order:", error);
