@@ -756,15 +756,31 @@ document.addEventListener("DOMContentLoaded", function () {
         }).join('');
     }
 
-    async function handleProductFormSubmit(e) {
-        e.preventDefault();
-        const saveButton = document.getElementById('save-product-btn');
-        saveButton.disabled = true;
-        saveButton.innerHTML = '<span class="spinner-border spinner-border-sm"></span> جاري الحفظ...';
+async function handleProductFormSubmit(e) {
+    e.preventDefault();
+    const saveButton = document.getElementById('save-product-btn');
+    saveButton.disabled = true;
+    saveButton.innerHTML = '<span class="spinner-border spinner-border-sm"></span> جاري الحفظ...';
 
-        const productId = document.getElementById('productId').value;
-        const imageFiles = document.getElementById('productImageFiles').files;
+    const productId = document.getElementById('productId').value;
+    const imageFiles = document.getElementById('productImageFiles').files;
 
+    // دالة لتحويل ملف إلى نص Base64
+    const toBase64 = file => new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = error => reject(error);
+    });
+
+    try {
+        let newImageUrls = [];
+        if (imageFiles.length > 0) {
+            // تحويل كل الصور الجديدة التي تم اختيارها
+            newImageUrls = await Promise.all(Array.from(imageFiles).map(toBase64));
+        }
+        
+        // جلب الصور القديمة إذا كان المنتج قيد التعديل
         let existingImageUrls = [];
         if (productId) {
             const product = allAdminProducts.find(p => p.id === productId);
@@ -772,74 +788,42 @@ document.addEventListener("DOMContentLoaded", function () {
                 existingImageUrls = product.images;
             }
         }
+        
+        const allImageUrls = [...existingImageUrls, ...newImageUrls];
 
-        let newImageUrls = [];
+        const productData = {
+            name_ar: document.getElementById('productName').value,
+            price: parseFloat(document.getElementById('productPrice').value),
+            description_ar: document.getElementById('productDescription').value,
+            category_ar: document.getElementById('productCategory').value,
+            stock: parseInt(document.getElementById('productStock').value),
+            is_featured: document.getElementById('isFeatured').checked,
+            images: allImageUrls // هنا سيتم حفظ نصوص Base64
+        };
 
-        try {
-            if (imageFiles.length > 0 && storage) {
-                const progressContainer = document.getElementById('image-upload-progress-container');
-                const progressBar = document.getElementById('image-upload-progress-bar');
-                progressContainer.style.display = 'block';
-                progressBar.style.width = '0%';
-                progressBar.textContent = '0%';
-
-                const uploadPromises = Array.from(imageFiles).map(file => {
-                    const storageRef = storage.ref(`products/${Date.now()}_${file.name}`);
-                    const uploadTask = storageRef.put(file);
-
-                    return new Promise((resolve, reject) => {
-                        uploadTask.on('state_changed',
-                            (snapshot) => {
-                                const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-                                progressBar.style.width = progress + '%';
-                                progressBar.textContent = Math.round(progress) + '%';
-                            },
-                            (error) => reject(error),
-                            async () => {
-                                const downloadURL = await uploadTask.snapshot.ref.getDownloadURL();
-                                resolve(downloadURL);
-                            }
-                        );
-                    });
-                });
-
-                newImageUrls = await Promise.all(uploadPromises);
-                progressContainer.style.display = 'none';
-            }
-
-            const allImageUrls = [...existingImageUrls, ...newImageUrls];
-
-            const productData = {
-                name_ar: document.getElementById('productName').value,
-                price: parseFloat(document.getElementById('productPrice').value),
-                description_ar: document.getElementById('productDescription').value,
-                category_ar: document.getElementById('productCategory').value,
-                stock: parseInt(document.getElementById('productStock').value),
-                is_featured: document.getElementById('isFeatured').checked,
-                images: allImageUrls
-            };
-
-            if (productId) {
-                await db.collection('products').doc(productId).update(productData);
-                showNotification('تم تحديث المنتج بنجاح!', 'success');
-            } else {
-                productData.createdAt = firebase.firestore.FieldValue.serverTimestamp();
-                await db.collection('products').add(productData);
-                showNotification('تم إضافة المنتج بنجاح!', 'success');
-            }
-
-            document.getElementById('add-product-form-container').style.display = 'none';
-            document.getElementById('product-form').reset();
-            await loadDashboardData();
-
-        } catch (error) {
-            console.error("Error saving product:", error);
-            showNotification('حدث خطأ أثناء حفظ المنتج.', 'danger');
-        } finally {
-            saveButton.disabled = false;
-            saveButton.innerHTML = 'حفظ المنتج';
+        if (productId) {
+            // تحديث المنتج الحالي
+            await db.collection('products').doc(productId).update(productData);
+            showNotification('تم تحديث المنتج بنجاح!', 'success');
+        } else {
+            // إضافة منتج جديد
+            productData.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+            await db.collection('products').add(productData);
+            showNotification('تم إضافة المنتج بنجاح!', 'success');
         }
+
+        document.getElementById('add-product-form-container').style.display = 'none';
+        document.getElementById('product-form').reset();
+        await loadDashboardData(); // إعادة تحميل البيانات
+
+    } catch (error) {
+        console.error("Error saving product with Base64:", error);
+        showNotification('حدث خطأ أثناء حفظ المنتج. تحقق من حجم الصور.', 'danger');
+    } finally {
+        saveButton.disabled = false;
+        saveButton.innerHTML = 'حفظ المنتج';
     }
+}
 
 
     window.editProduct = (productId) => {
