@@ -161,6 +161,16 @@
                                         <label for="categoryName" class="form-label">اسم التصنيف</label>
                                         <input type="text" class="form-control" id="categoryName" required>
                                     </div>
+                                    <div class="mb-3">
+                                        <label for="categoryImage" class="form-label">صورة الصنف</label>
+                                        <input type="file" class="form-control" id="categoryImage" accept="image/*">
+                                        <div class="form-text">اختياري. ستظهر هذه الصورة في الصفحة الرئيسية.</div>
+                                    </div>
+                                    <div class="mb-3" id="current-category-image-container" style="display: none;">
+                                        <label class="form-label">الصورة الحالية</label>
+                                        <img id="current-category-image" src="" alt="الصورة الحالية"
+                                            class="img-fluid rounded" style="max-height: 100px;">
+                                    </div>
                                     <button type="submit" class="btn btn-success">حفظ التصنيف</button>
                                     <button type="button" id="cancel-category-edit-btn" class="btn btn-secondary"
                                         style="display: none;">إلغاء</button>
@@ -174,6 +184,7 @@
                             <table class="table table-striped table-hover align-middle">
                                 <thead>
                                     <tr>
+                                        <th>الصورة</th>
                                         <th>اسم التصنيف</th>
                                         <th>إجراءات</th>
                                     </tr>

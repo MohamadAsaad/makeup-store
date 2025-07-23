@@ -21,10 +21,7 @@
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav me-auto mb-2 mb-lg-0">
                     <li class="nav-item"><a class="nav-link active" href="index.html">الرئيسية</a></li>
-                    <!-- <li class="nav-item"><a class="nav-link" href="shop.html">مكياج</a></li> -->
-                    <!-- <li class="nav-item"><a class="nav-link" href="shop.html">عناية بالبشرة</a></li> -->
                     <li class="nav-item"><a class="nav-link" href="shop.html">كل المنتجات</a></li>
-                    <!-- <li class="nav-item"><a class="nav-link" href="#">الأكثر مبيعًا</a></li> -->
                     <li class="nav-item"><a class="nav-link" href="dashboard.html">لوحة التحكم</a></li>
                 </ul>
                 <form class="d-flex me-3" id="search-form" role="search">
@@ -63,13 +60,21 @@
 
         <hr class="my-5">
 
-        <div id="home-categories-container">
-            <div class="col-12 text-center my-5">
-                <div class="spinner-border text-primary" style="width: 3rem; height: 3rem;" role="status">
-                    <span class="visually-hidden">Loading Categories...</span>
+        <section class="my-5" id="category-carousel-section">
+            <h2 class="section-title text-center">✨ تصفح حسب الصنف</h2>
+            <div class="swiper" id="category-swiper-container">
+                <div class="swiper-wrapper" id="category-swiper-wrapper">
+                    <div class="swiper-slide text-center">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
                 </div>
+                <div class="swiper-pagination"></div>
+                <div class="swiper-button-next"></div>
+                <div class="swiper-button-prev"></div>
             </div>
-        </div>
+        </section>
 
     </main>
 
