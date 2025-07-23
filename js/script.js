@@ -15,16 +15,12 @@ document.addEventListener("DOMContentLoaded", function () {
         firebase.initializeApp(firebaseConfig);
     }
 
-    // Safely initialize Firebase services to prevent errors on pages that might be missing a script
     const db = firebase.firestore();
     const auth = typeof firebase.auth === 'function' ? firebase.auth() : null;
-    // Firebase Storage is no longer needed for product image uploads
-    // const storage = typeof firebase.storage === 'function' ? firebase.storage() : null;
-
 
     // --- 2. GLOBAL VARIABLES & UTILS ---
     const WHATSAPP_NUMBER = "+905516304088";
-    const IMGBB_API_KEY = "bb77b659de427ab9cf344675ba35030d"; // Your ImgBB API Key
+    const IMGBB_API_KEY = "bb77b659de427ab9cf344675ba35030d";
     let cart = JSON.parse(localStorage.getItem('makeupStoreCart')) || [];
     let allAdminProducts = [];
     let allAdminOrders = [];
@@ -32,19 +28,16 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // Pagination State
     let lastVisibleProduct = null;
-    let firstVisibleProduct = null;
-    let pageCursors = [null]; // لتخزين مؤشر بداية كل صفحة. null للصفحة الأولى
+    let pageCursors = [null];
     let currentPage = 1;
     const PRODUCTS_PER_PAGE = 8;
 
     // --- 3. PAGE ROUTING & AUTHENTICATION ---
     const page = window.location.pathname.split("/").pop();
 
-    // Only run auth-related logic if the auth service was successfully initialized
     if (auth) {
         auth.onAuthStateChanged(user => {
             if (user) {
-                // User is signed in.
                 if (page === 'login.html') {
                     window.location.href = 'dashboard.html';
                 }
@@ -57,7 +50,6 @@ document.addEventListener("DOMContentLoaded", function () {
                     initializeDashboard();
                 }
             } else {
-                // User is signed out.
                 if (page === 'dashboard.html') {
                     window.location.href = 'login.html';
                 }
@@ -69,11 +61,9 @@ document.addEventListener("DOMContentLoaded", function () {
     if (page === 'login.html') {
         const loginForm = document.getElementById('login-form');
         if (loginForm) loginForm.addEventListener('submit', handleLogin);
-    }
-
-    if (page === 'index.html' || page === '') {
+    } else if (page === 'index.html' || page === '') {
         displayFeaturedProducts();
-        displayHomepageCategorySections();
+        displayHomepageCategoryCarousel();
     } else if (page === 'shop.html') {
         const urlParams = new URLSearchParams(window.location.search);
         const searchQuery = urlParams.get('search');
@@ -120,7 +110,6 @@ document.addEventListener("DOMContentLoaded", function () {
 
         try {
             await auth.signInWithEmailAndPassword(email, password);
-            // Redirect is handled by onAuthStateChanged listener
         } catch (error) {
             console.error("Login failed:", error);
             if (errorAlert) {
@@ -172,52 +161,49 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     // --- 6. DISPLAY FUNCTIONS (Storefront) ---
-
-    async function displayHomepageCategorySections() {
-        const container = document.getElementById('home-categories-container');
-        if (!container) return;
+    async function displayHomepageCategoryCarousel() {
+        const section = document.getElementById('category-carousel-section');
+        const swiperWrapper = document.getElementById('category-swiper-wrapper');
+        if (!section || !swiperWrapper) return;
 
         try {
             const snapshot = await db.collection('categories').orderBy('name').get();
             if (snapshot.empty) {
-                container.innerHTML = `<p class="text-muted text-center">لم يتم إضافة تصنيفات بعد.</p>`;
+                section.innerHTML = `<p class="text-muted text-center">لم يتم إضافة تصنيفات بعد.</p>`;
                 return;
             }
 
-            let sectionsHTML = '';
+            let slidesHTML = '';
             snapshot.forEach(doc => {
                 const category = doc.data();
-                const categoryId = doc.id;
-                const productContainerId = `category-products-${categoryId}`;
-
-                sectionsHTML += `
-                <section class="text-center mb-5">
-                    <h2 class="section-title">✨ ${category.name}</h2>
-                    <div id="${productContainerId}" class="row g-4">
-                        <div class="col-12 text-center my-5">
-                            <div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div>
-                        </div>
-                    </div>
-                    <div class="mt-4">
-                        <a href="shop.html?category=${encodeURIComponent(category.name)}" class="btn btn-outline-primary">عرض كل منتجات ${category.name}</a>
-                    </div>
-                </section>
-                <hr class="my-5">
+                const imageUrl = category.imageUrl || 'https://images.unsplash.com/photo-1596462502278-27bfdc403348?q=80&w=2070';
+                slidesHTML += `
+                <div class="swiper-slide category-slide">
+                    <a href="shop.html?category=${encodeURIComponent(category.name)}" class="category-slide-link">
+                        <img src="${imageUrl}" alt="${category.name}" class="category-slide-image">
+                        <div class="category-slide-overlay"></div>
+                        <span class="category-slide-name">${category.name}</span>
+                    </a>
+                </div>
                 `;
             });
+            swiperWrapper.innerHTML = slidesHTML;
 
-            container.innerHTML = sectionsHTML;
-
-            snapshot.forEach(doc => {
-                const category = doc.data();
-                const categoryId = doc.id;
-                const productContainerId = `category-products-${categoryId}`;
-                displayProductsByCategory(category.name, productContainerId, 4);
+            new Swiper('#category-swiper-container', {
+                loop: snapshot.docs.length > 4,
+                spaceBetween: 20,
+                slidesPerView: 2,
+                pagination: { el: '.swiper-pagination', clickable: true },
+                navigation: { nextEl: '.swiper-button-next', prevEl: '.swiper-button-prev' },
+                breakpoints: {
+                    576: { slidesPerView: 3, spaceBetween: 20 },
+                    768: { slidesPerView: 4, spaceBetween: 30 },
+                    992: { slidesPerView: 5, spaceBetween: 40 }
+                }
             });
-
         } catch (error) {
-            console.error("Error fetching categories for homepage: ", error);
-            container.innerHTML = `<p class="text-danger text-center">عفواً، حدث خطأ في جلب التصنيفات.</p>`;
+            console.error("Error fetching categories for homepage carousel: ", error);
+            section.innerHTML = `<p class="text-danger text-center">عفواً، حدث خطأ في جلب التصنيفات.</p>`;
         }
     }
 
@@ -243,26 +229,6 @@ document.addEventListener("DOMContentLoaded", function () {
             });
         } catch (error) {
             console.error("Error fetching categories for filter buttons: ", error);
-        }
-    }
-
-    async function displayProductsByCategory(category, containerId, limit = 8) {
-        const container = document.getElementById(containerId);
-        if (!container) return;
-        try {
-            const snapshot = await db.collection('products').where("category_ar", "==", category).limit(limit).get();
-            if (snapshot.empty) {
-                container.innerHTML = `<p class="text-muted col-12">لا توجد منتجات في هذا التصنيف حالياً.</p>`;
-                return;
-            }
-            let productsHTML = '';
-            snapshot.forEach(doc => {
-                productsHTML += createProductCardHTML(doc.id, doc.data());
-            });
-            container.innerHTML = productsHTML;
-        } catch (error) {
-            console.error(`Error fetching ${category} products: `, error);
-            container.innerHTML = `<p class="text-danger col-12">عفواً، حدث خطأ في جلب المنتجات.</p>`;
         }
     }
 
@@ -344,11 +310,10 @@ document.addEventListener("DOMContentLoaded", function () {
                 return;
             }
 
-            const firstVisible = snapshot.docs[0];
             lastVisibleProduct = snapshot.docs[snapshot.docs.length - 1];
 
             if (direction === 'next') {
-                pageCursors.push(firstVisible);
+                pageCursors.push(snapshot.docs[0]);
             }
 
             container.innerHTML = snapshot.docs.map(doc => createProductCardHTML(doc.id, doc.data())).join('');
@@ -448,7 +413,6 @@ document.addEventListener("DOMContentLoaded", function () {
     function displayCartItems() {
         const itemsContainer = document.getElementById('cart-items');
         const totalElement = document.getElementById('cart-total');
-        const checkoutButton = document.querySelector('a[href="checkout.html"]');
         if (!itemsContainer || !totalElement) return;
 
         if (cart.length === 0) {
@@ -456,7 +420,6 @@ document.addEventListener("DOMContentLoaded", function () {
             return;
         }
 
-        if (checkoutButton) checkoutButton.classList.remove('disabled');
         let total = 0;
         let itemsHTML = '';
         cart.forEach(item => {
@@ -511,7 +474,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
         currentPage = 1;
         lastVisibleProduct = null;
-        firstVisibleProduct = null;
+        pageCursors = [null];
         displayShopProducts({ category });
     };
 
@@ -533,7 +496,7 @@ document.addEventListener("DOMContentLoaded", function () {
             const total = cart.reduce((acc, item) => acc + item.price * item.quantity, 0);
             try {
                 const orderRef = await db.collection('orders').add({ customer: customerData, items: cart, total: total, status: 'new', createdAt: firebase.firestore.FieldValue.serverTimestamp() });
-                let message = `*طلب جديد من متجر الجمال* ✨\n(رقم الطلب: ${orderRef.id})\n\n*المنتجات:*\n`;
+                let message = `*طلب جديد من Stylek Net* ✨\n(رقم الطلب: ${orderRef.id})\n\n*المنتجات:*\n`;
                 cart.forEach(item => { message += `- ${item.name} (الكمية: ${item.quantity})\n`; });
                 message += `\n*الإجمالي: ${total.toFixed(2)} ر.س*\n\n*بيانات التوصيل:*\nالاسم: ${customerData.name}\nالهاتف: ${customerData.phone}\nالعنوان: ${customerData.city}, ${customerData.address}\n\nالدفع عند الاستلام.`;
                 const whatsappUrl = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
@@ -555,42 +518,33 @@ document.addEventListener("DOMContentLoaded", function () {
     function initializeDashboard() {
         if (!document.body.classList.contains('dashboard-body')) return;
 
-        const productFormContainer = document.getElementById('add-product-form-container');
-        const productForm = document.getElementById('product-form');
-        const showProductFormBtn = document.getElementById('show-add-product-form-btn');
-        const cancelEditBtn = document.getElementById('cancel-edit-btn');
-        const formTitle = document.getElementById('form-title');
+        // Product Form Listeners
+        document.getElementById('show-add-product-form-btn')?.addEventListener('click', () => {
+            document.getElementById('form-title').textContent = 'إضافة منتج جديد';
+            document.getElementById('product-form').reset();
+            document.getElementById('productId').value = '';
+            document.getElementById('current-images-display').innerHTML = '';
+            document.getElementById('add-product-form-container').style.display = 'block';
+        });
+        document.getElementById('cancel-edit-btn')?.addEventListener('click', () => {
+            document.getElementById('add-product-form-container').style.display = 'none';
+        });
+        document.getElementById('product-form')?.addEventListener('submit', handleProductFormSubmit);
 
-        if (showProductFormBtn) {
-            showProductFormBtn.addEventListener('click', () => {
-                formTitle.textContent = 'إضافة منتج جديد';
-                productForm.reset();
-                document.getElementById('productId').value = '';
-                document.getElementById('current-images-display').innerHTML = '';
-                productFormContainer.style.display = 'block';
-            });
-        }
-        if (cancelEditBtn) {
-            cancelEditBtn.addEventListener('click', () => { productFormContainer.style.display = 'none'; });
-        }
-        if (productForm) {
-            productForm.addEventListener('submit', handleProductFormSubmit);
-        }
-        const categoryForm = document.getElementById('category-form');
-        const cancelCategoryEditBtn = document.getElementById('cancel-category-edit-btn');
-        if (categoryForm) {
-            categoryForm.addEventListener('submit', handleCategoryFormSubmit);
-        }
-        if (cancelCategoryEditBtn) {
-            cancelCategoryEditBtn.addEventListener('click', () => {
-                document.getElementById('category-form').reset();
-                document.getElementById('categoryId').value = '';
-                document.getElementById('category-form-title').textContent = 'إضافة تصنيف جديد';
-                cancelCategoryEditBtn.style.display = 'none';
-            });
-        }
+        // Category Form Listeners
+        document.getElementById('category-form')?.addEventListener('submit', handleCategoryFormSubmit);
+        document.getElementById('cancel-category-edit-btn')?.addEventListener('click', () => {
+            document.getElementById('category-form').reset();
+            document.getElementById('categoryId').value = '';
+            document.getElementById('category-form-title').textContent = 'إضافة تصنيف جديد';
+            document.getElementById('cancel-category-edit-btn').style.display = 'none';
+            document.getElementById('current-category-image-container').style.display = 'none';
+        });
+
+        // Search Listeners
         document.getElementById('product-search-input')?.addEventListener('input', (e) => renderAdminProducts(e.target.value));
         document.getElementById('order-search-input')?.addEventListener('input', (e) => renderAdminOrders(document.querySelector('#order-filter-buttons .btn-primary').dataset.status, e.target.value));
+
         loadDashboardData();
     }
 
@@ -757,7 +711,6 @@ document.addEventListener("DOMContentLoaded", function () {
         let newImageUrls = [];
 
         try {
-            // --- START: ImgBB Upload Logic ---
             if (imageFiles.length > 0) {
                 const progressContainer = document.getElementById('image-upload-progress-container');
                 const progressBar = document.getElementById('image-upload-progress-bar');
@@ -784,7 +737,6 @@ document.addEventListener("DOMContentLoaded", function () {
 
                         const result = await response.json();
                         if (result.success) {
-                            // Update progress bar after each successful upload
                             const progress = ((index + 1) / imageFiles.length) * 100;
                             progressBar.style.width = progress + '%';
                             progressBar.textContent = Math.round(progress) + '%';
@@ -793,17 +745,13 @@ document.addEventListener("DOMContentLoaded", function () {
                             throw new Error('فشل رفع الصورة على ImgBB.');
                         }
                     } catch (error) {
-                        // Re-throw the error to be caught by Promise.all
                         throw error;
                     }
                 });
 
-                // Wait for all uploads to complete
                 newImageUrls = await Promise.all(uploadPromises);
                 progressContainer.style.display = 'none';
             }
-            // --- END: ImgBB Upload Logic ---
-
             const allImageUrls = [...existingImageUrls, ...newImageUrls];
 
             const productData = {
@@ -876,11 +824,6 @@ document.addEventListener("DOMContentLoaded", function () {
     window.deleteProduct = async (productId) => {
         if (confirm('هل أنت متأكد من رغبتك في حذف هذا المنتج؟ لا يمكن التراجع عن هذا الإجراء.')) {
             try {
-                // Note: This function now only deletes the product from Firestore.
-                // Deleting images from ImgBB would require storing the 'delete_url' for each image,
-                // which is not implemented in this version.
-                // The previous code for deleting images from Firebase Storage has been removed.
-
                 await db.collection('products').doc(productId).delete();
                 showNotification('تم حذف المنتج بنجاح.', 'success');
                 loadDashboardData();
@@ -898,7 +841,6 @@ document.addEventListener("DOMContentLoaded", function () {
             const order = allAdminOrders.find(o => o.id === orderId);
             if (order) order.status = newStatus;
             showNotification(`تم تحديث حالة الطلب.`, 'success');
-            // Optimistically update the UI without a full reload for better performance
             const badge = document.querySelector(`.order-card select[id='status-${orderId}']`).closest('.card-header').querySelector('.badge');
             const statusInfo = getStatusBadge(newStatus);
             badge.className = `badge ${statusInfo.class}`;
@@ -926,14 +868,15 @@ document.addEventListener("DOMContentLoaded", function () {
         const tableBody = document.getElementById('categories-table-body');
         if (!tableBody) return;
         if (allAdminCategories.length === 0) {
-            tableBody.innerHTML = '<tr><td colspan="2" class="text-center">لا توجد تصنيفات.</td></tr>';
+            tableBody.innerHTML = '<tr><td colspan="3" class="text-center">لا توجد تصنيفات.</td></tr>';
             return;
         }
         tableBody.innerHTML = allAdminCategories.map(cat => `
             <tr>
+                <td><img src="${cat.imageUrl || 'https://via.placeholder.com/70'}" alt="${cat.name}" width="70" height="70" class="rounded border" style="object-fit: cover;"></td>
                 <td>${cat.name}</td>
                 <td class="actions-cell">
-                    <button class="btn btn-sm btn-outline-secondary" onclick="editCategory('${cat.id}', '${cat.name}')"><i class="bi bi-pencil"></i> تعديل</button>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="editCategory('${cat.id}')"><i class="bi bi-pencil"></i> تعديل</button>
                     <button class="btn btn-sm btn-outline-danger" onclick="deleteCategory('${cat.id}')"><i class="bi bi-trash"></i> حذف</button>
                 </td>
             </tr>
@@ -944,31 +887,79 @@ document.addEventListener("DOMContentLoaded", function () {
         e.preventDefault();
         const categoryId = document.getElementById('categoryId').value;
         const categoryName = document.getElementById('categoryName').value.trim();
+        const imageFile = document.getElementById('categoryImage').files[0];
         if (!categoryName) return;
+
         try {
+            let imageUrl = null;
+
             if (categoryId) {
-                await db.collection('categories').doc(categoryId).update({ name: categoryName });
+                const existingCategory = allAdminCategories.find(c => c.id === categoryId);
+                if (existingCategory) imageUrl = existingCategory.imageUrl;
+            }
+
+            if (imageFile) {
+                showNotification('جاري رفع صورة الصنف...', 'info');
+                const formData = new FormData();
+                formData.append('image', imageFile);
+                formData.append('key', IMGBB_API_KEY);
+
+                const response = await fetch('https://api.imgbb.com/1/upload', {
+                    method: 'POST', body: formData,
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    imageUrl = result.data.url;
+                } else {
+                    throw new Error('فشل رفع صورة الصنف على ImgBB.');
+                }
+            }
+
+            const categoryData = { name: categoryName, imageUrl: imageUrl };
+
+            if (categoryId) {
+                await db.collection('categories').doc(categoryId).update(categoryData);
                 showNotification('تم تحديث التصنيف بنجاح!', 'success');
             } else {
-                await db.collection('categories').add({ name: categoryName });
+                await db.collection('categories').add(categoryData);
                 showNotification('تم إضافة التصنيف بنجاح!', 'success');
             }
+
             document.getElementById('category-form').reset();
             document.getElementById('categoryId').value = '';
             document.getElementById('category-form-title').textContent = 'إضافة تصنيف جديد';
             document.getElementById('cancel-category-edit-btn').style.display = 'none';
+            document.getElementById('current-category-image-container').style.display = 'none';
+
             loadDashboardData();
         } catch (error) {
             console.error("Error saving category:", error);
-            showNotification('حدث خطأ أثناء حفظ التصنيف.', 'danger');
+            showNotification(error.message || 'حدث خطأ أثناء حفظ التصنيف.', 'danger');
         }
     }
-    window.editCategory = (id, name) => {
+
+    window.editCategory = (id) => {
+        const category = allAdminCategories.find(c => c.id === id);
+        if (!category) return;
+
         document.getElementById('category-form-title').textContent = 'تعديل التصنيف';
         document.getElementById('categoryId').value = id;
-        document.getElementById('categoryName').value = name;
+        document.getElementById('categoryName').value = category.name;
         document.getElementById('cancel-category-edit-btn').style.display = 'inline-block';
+
+        const imageContainer = document.getElementById('current-category-image-container');
+        const imageEl = document.getElementById('current-category-image');
+        if (category.imageUrl) {
+            imageEl.src = category.imageUrl;
+            imageContainer.style.display = 'block';
+        } else {
+            imageContainer.style.display = 'none';
+        }
+        document.getElementById('categoryImage').value = '';
+        window.scrollTo(0, document.getElementById('category-form').offsetTop);
     };
+
     window.deleteCategory = async (id) => {
         if (confirm('هل أنت متأكد من رغبتك في حذف هذا التصنيف؟')) {
             try {
@@ -981,6 +972,7 @@ document.addEventListener("DOMContentLoaded", function () {
             }
         }
     };
+
     function populateCategoryDropdown() {
         const selectElement = document.getElementById('productCategory');
         if (!selectElement) return;
